@@ -1,11 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { UserData, QuestionStats, Question } from '../types';
+import { UserData, QuestionStats, Question, AnsweredQuestion } from '../types';
 import { questions as defaultQuestions } from '../data/questions';
 import { supabase } from './supabase';
 
 const USER_DATA_KEY = '@gakuho_quiz_user_data';
 const CUSTOM_QUESTIONS_KEY = '@gakuho_quiz_custom_questions';
 const DEVICE_ID_KEY = '@gakuho_quiz_device_id';
+const LAST_QUIZ_RESULT_KEY = '@gakuho_quiz_last_result';
 
 // デバイスIDを取得または生成
 export const getDeviceId = async (): Promise<string> => {
@@ -341,4 +342,56 @@ export const generateQuestionId = (subject: string): string => {
   const timestamp = Date.now();
   const random = Math.random().toString(36).substring(2, 6);
   return `custom-${subject}-${timestamp}-${random}`;
+};
+
+// === クイズ結果の一時保存 ===
+
+export interface LastQuizResult {
+  answeredQuestions: AnsweredQuestion[];
+  totalScore: number;
+  timestamp: number;
+}
+
+// 最後のクイズ結果を保存
+export const saveLastQuizResult = async (
+  answeredQuestions: AnsweredQuestion[],
+  totalScore: number
+): Promise<void> => {
+  try {
+    const result: LastQuizResult = {
+      answeredQuestions,
+      totalScore,
+      timestamp: Date.now(),
+    };
+    await AsyncStorage.setItem(LAST_QUIZ_RESULT_KEY, JSON.stringify(result));
+  } catch (error) {
+    console.error('Error saving last quiz result:', error);
+  }
+};
+
+// 最後のクイズ結果を取得
+export const getLastQuizResult = async (): Promise<LastQuizResult | null> => {
+  try {
+    const data = await AsyncStorage.getItem(LAST_QUIZ_RESULT_KEY);
+    if (data) {
+      const result = JSON.parse(data) as LastQuizResult;
+      // 1時間以内のデータのみ有効
+      if (Date.now() - result.timestamp < 60 * 60 * 1000) {
+        return result;
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error('Error loading last quiz result:', error);
+    return null;
+  }
+};
+
+// 最後のクイズ結果をクリア
+export const clearLastQuizResult = async (): Promise<void> => {
+  try {
+    await AsyncStorage.removeItem(LAST_QUIZ_RESULT_KEY);
+  } catch (error) {
+    console.error('Error clearing last quiz result:', error);
+  }
 };

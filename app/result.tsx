@@ -1,12 +1,34 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  ActivityIndicator,
+  TouchableOpacity,
+  Linking,
+  Image,
+} from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '../components/Button';
-import { getHighScores, getQuestionStats } from '../utils/storage';
+import {
+  getHighScores,
+  getQuestionStats,
+  getLastQuizResult,
+  clearLastQuizResult,
+} from '../utils/storage';
 import { getWeakQuestionIds } from '../utils/scoring';
-import { SUBJECT_NAMES, Subject } from '../types';
-import { questions as allQuestions } from '../data/questions';
+import { SUBJECT_NAMES, Subject, AnsweredQuestion } from '../types';
+import { getDiagnosis, getWeakSubjects } from '../utils/openai';
+import { getRecommendedMaterials, Material } from '../data/materials';
+
+interface DiagnosisResult {
+  comment: string;
+  strengths: string[];
+  weaknesses: string[];
+  advice: string;
+}
 
 export default function ResultScreen() {
   const router = useRouter();
@@ -21,9 +43,15 @@ export default function ResultScreen() {
 
   const [highScores, setHighScores] = useState<Record<string, number>>({});
   const [weakQuestionCount, setWeakQuestionCount] = useState(0);
+  const [diagnosis, setDiagnosis] = useState<DiagnosisResult | null>(null);
+  const [isLoadingDiagnosis, setIsLoadingDiagnosis] = useState(false);
+  const [recommendedMaterials, setRecommendedMaterials] = useState<Material[]>([]);
 
   useEffect(() => {
     loadData();
+    if (!isHistory) {
+      loadDiagnosis();
+    }
   }, []);
 
   const loadData = async () => {
@@ -33,6 +61,33 @@ export default function ResultScreen() {
     const stats = await getQuestionStats();
     const weakIds = getWeakQuestionIds(stats);
     setWeakQuestionCount(weakIds.length);
+  };
+
+  const loadDiagnosis = async () => {
+    setIsLoadingDiagnosis(true);
+    try {
+      const lastResult = await getLastQuizResult();
+      if (lastResult && lastResult.answeredQuestions.length > 0) {
+        // AI診断を取得
+        const diagnosisResult = await getDiagnosis(
+          lastResult.answeredQuestions,
+          lastResult.totalScore
+        );
+        setDiagnosis(diagnosisResult);
+
+        // 苦手教科に基づいて副教材をレコメンド
+        const weakSubjects = getWeakSubjects(lastResult.answeredQuestions);
+        const materials = getRecommendedMaterials(weakSubjects, 3);
+        setRecommendedMaterials(materials);
+
+        // 一時データをクリア
+        await clearLastQuizResult();
+      }
+    } catch (error) {
+      console.error('Error loading diagnosis:', error);
+    } finally {
+      setIsLoadingDiagnosis(false);
+    }
   };
 
   const accuracy = total > 0 ? Math.round((correct / total) * 100) : 0;
@@ -64,6 +119,10 @@ export default function ResultScreen() {
     router.replace('/');
   };
 
+  const handleMaterialPress = (url: string) => {
+    Linking.openURL(url);
+  };
+
   if (isHistory) {
     return (
       <SafeAreaView style={styles.container}>
@@ -91,7 +150,7 @@ export default function ResultScreen() {
               Object.entries(highScores).map(([key, score]) => (
                 <View key={key} style={styles.scoreRow}>
                   <Text style={styles.scoreKey}>{formatScoreKey(key)}</Text>
-                  <Text style={styles.scoreValue}>{score}点</Text>
+                  <Text style={styles.scoreValueSmall}>{score}点</Text>
                 </View>
               ))
             )}
@@ -114,7 +173,11 @@ export default function ResultScreen() {
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.scrollView}>
         <View style={styles.mascotContainer}>
-          <Text style={styles.mascotEmoji}>🐱</Text>
+          <Image
+            source={require('../assets/gakumaru.png')}
+            style={styles.mascotImage}
+            resizeMode="contain"
+          />
         </View>
 
         <View style={styles.gradeContainer}>
@@ -144,6 +207,77 @@ export default function ResultScreen() {
             <Text style={styles.statItemValue}>{accuracy}%</Text>
           </View>
         </View>
+
+        {/* AI診断セクション */}
+        <View style={styles.diagnosisSection}>
+          <Text style={styles.sectionTitle}>がくまるからのアドバイス</Text>
+          {isLoadingDiagnosis ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color="#4A90D9" />
+              <Text style={styles.loadingText}>診断中...</Text>
+            </View>
+          ) : diagnosis ? (
+            <View style={styles.diagnosisCard}>
+              <Text style={styles.diagnosisComment}>{diagnosis.comment}</Text>
+
+              {diagnosis.strengths.length > 0 && (
+                <View style={styles.diagnosisItem}>
+                  <Text style={styles.diagnosisItemTitle}>得意なところ</Text>
+                  {diagnosis.strengths.map((s, i) => (
+                    <Text key={i} style={styles.diagnosisItemText}>・{s}</Text>
+                  ))}
+                </View>
+              )}
+
+              {diagnosis.weaknesses.length > 0 && (
+                <View style={styles.diagnosisItem}>
+                  <Text style={styles.diagnosisItemTitle}>もう少しがんばろう</Text>
+                  {diagnosis.weaknesses.map((w, i) => (
+                    <Text key={i} style={styles.diagnosisItemText}>・{w}</Text>
+                  ))}
+                </View>
+              )}
+
+              <View style={styles.adviceBox}>
+                <Text style={styles.adviceText}>{diagnosis.advice}</Text>
+              </View>
+            </View>
+          ) : null}
+        </View>
+
+        {/* 副教材レコメンドセクション */}
+        {recommendedMaterials.length > 0 && (
+          <View style={styles.materialsSection}>
+            <Text style={styles.sectionTitle}>おすすめの教材</Text>
+            {recommendedMaterials.map((material) => (
+              <TouchableOpacity
+                key={material.id}
+                style={styles.materialCard}
+                onPress={() => handleMaterialPress(material.url)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.materialContent}>
+                  <Text style={styles.materialName}>{material.name}</Text>
+                  <Text style={styles.materialDescription}>
+                    {material.description}
+                  </Text>
+                  <View style={styles.materialFooter}>
+                    <Text style={styles.materialSubject}>
+                      {SUBJECT_NAMES[material.subject as Subject]}
+                    </Text>
+                    <Text style={styles.materialPrice}>
+                      {material.price.toLocaleString()}円
+                    </Text>
+                  </View>
+                </View>
+                <Text style={styles.materialArrow}>→</Text>
+              </TouchableOpacity>
+            ))}
+            <Text style={styles.materialHint}>
+              タップで学宝社オンラインストアへ
+            </Text>
+          </View>
+        )}
 
         <View style={styles.buttonContainer}>
           <Button
@@ -201,33 +335,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 20,
   },
-  mascotEmoji: {
-    fontSize: 60,
+  mascotImage: {
+    width: 100,
+    height: 100,
   },
   gradeContainer: {
     alignItems: 'center',
-    marginTop: 20,
+    marginTop: 16,
   },
   grade: {
-    fontSize: 80,
+    fontSize: 72,
     fontWeight: 'bold',
   },
   gradeMessage: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
     color: '#333333',
-    marginTop: 8,
+    marginTop: 4,
   },
   scoreContainer: {
     alignItems: 'center',
-    marginTop: 30,
+    marginTop: 24,
   },
   scoreBox: {
     flexDirection: 'row',
     alignItems: 'baseline',
     backgroundColor: '#FFFFFF',
     paddingHorizontal: 30,
-    paddingVertical: 20,
+    paddingVertical: 16,
     borderRadius: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -236,38 +371,38 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   scoreLabel: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#666666',
     marginRight: 12,
   },
   scoreValue: {
-    fontSize: 48,
+    fontSize: 42,
     fontWeight: 'bold',
     color: '#FF6B35',
   },
   scoreUnit: {
-    fontSize: 20,
+    fontSize: 18,
     color: '#666666',
     marginLeft: 4,
   },
   statsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginTop: 30,
+    marginTop: 24,
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    padding: 20,
+    padding: 16,
   },
   statItem: {
     alignItems: 'center',
   },
   statItemLabel: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#666666',
     marginBottom: 4,
   },
   statItemValue: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
     color: '#333333',
   },
@@ -275,10 +410,11 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: 'bold',
     color: '#333333',
     marginBottom: 12,
+    marginTop: 8,
   },
   statCard: {
     flexDirection: 'row',
@@ -324,12 +460,126 @@ const styles = StyleSheet.create({
     color: '#666666',
     flex: 1,
   },
+  scoreValueSmall: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#FF6B35',
+  },
   buttonContainer: {
-    marginTop: 30,
+    marginTop: 24,
     marginBottom: 40,
     gap: 12,
   },
   button: {
     width: '100%',
+  },
+  // 診断セクション
+  diagnosisSection: {
+    marginTop: 24,
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 24,
+  },
+  loadingText: {
+    marginLeft: 12,
+    color: '#666666',
+    fontSize: 14,
+  },
+  diagnosisCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+  },
+  diagnosisComment: {
+    fontSize: 15,
+    color: '#333333',
+    lineHeight: 24,
+    marginBottom: 16,
+  },
+  diagnosisItem: {
+    marginBottom: 12,
+  },
+  diagnosisItemTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#4A90D9',
+    marginBottom: 4,
+  },
+  diagnosisItemText: {
+    fontSize: 14,
+    color: '#666666',
+    marginLeft: 4,
+  },
+  adviceBox: {
+    backgroundColor: '#FFF9E6',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 8,
+  },
+  adviceText: {
+    fontSize: 14,
+    color: '#333333',
+    lineHeight: 22,
+  },
+  // 副教材セクション
+  materialsSection: {
+    marginTop: 24,
+  },
+  materialCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  materialContent: {
+    flex: 1,
+  },
+  materialName: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#333333',
+    marginBottom: 4,
+  },
+  materialDescription: {
+    fontSize: 13,
+    color: '#666666',
+    marginBottom: 8,
+  },
+  materialFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  materialSubject: {
+    fontSize: 12,
+    color: '#4A90D9',
+    backgroundColor: '#E3F2FD',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  materialPrice: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#FF6B35',
+  },
+  materialArrow: {
+    fontSize: 20,
+    color: '#4A90D9',
+    marginLeft: 12,
+  },
+  materialHint: {
+    textAlign: 'center',
+    fontSize: 12,
+    color: '#999999',
+    marginTop: 4,
   },
 });

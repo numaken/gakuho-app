@@ -8,7 +8,7 @@ import { Button } from '../components/Button';
 import { useTimer } from '../hooks/useTimer';
 import { useQuizLogic } from '../hooks/useQuizLogic';
 import { QuizMode, Subject, TimeLimit } from '../types';
-import { updateMultipleQuestionStats, updateHighScore } from '../utils/storage';
+import { updateMultipleQuestionStats, updateHighScore, saveLastQuizResult } from '../utils/storage';
 import { generateScoreKey } from '../utils/scoring';
 import {
   playCorrectFeedback,
@@ -98,6 +98,9 @@ export default function QuizScreen() {
 
     // クイズ完了のフィードバック
     playCompleteFeedback();
+
+    // AI診断用にクイズ結果を一時保存
+    await saveLastQuizResult(result.answeredQuestions, result.score);
 
     // 統計を保存
     const statsToUpdate = result.answeredQuestions.map((q) => ({
