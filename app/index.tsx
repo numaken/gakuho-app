@@ -32,10 +32,12 @@ export default function HomeScreen() {
       </View>
 
       <View style={styles.mascotContainer}>
-        <View style={styles.mascotPlaceholder}>
-          <Text style={styles.mascotEmoji}>🐱</Text>
-          <Text style={styles.mascotText}>ガクニャン</Text>
-        </View>
+        <Image
+          source={require('../assets/gakumaru.png')}
+          style={styles.mascotImage}
+          resizeMode="contain"
+        />
+        <Text style={styles.mascotText}>がくまる</Text>
       </View>
 
       <View style={styles.buttonContainer}>
@@ -118,25 +120,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  mascotPlaceholder: {
+  mascotImage: {
     width: 200,
     height: 200,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 100,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  mascotEmoji: {
-    fontSize: 80,
   },
   mascotText: {
-    fontSize: 16,
-    color: '#666666',
+    fontSize: 18,
+    color: '#4A90D9',
+    fontWeight: 'bold',
     marginTop: 8,
   },
   buttonContainer: {

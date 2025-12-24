@@ -10,6 +10,12 @@ import { useQuizLogic } from '../hooks/useQuizLogic';
 import { QuizMode, Subject, TimeLimit } from '../types';
 import { updateMultipleQuestionStats, updateHighScore } from '../utils/storage';
 import { generateScoreKey } from '../utils/scoring';
+import {
+  playCorrectFeedback,
+  playIncorrectFeedback,
+  playTimeUpFeedback,
+  playCompleteFeedback,
+} from '../utils/feedback';
 
 export default function QuizScreen() {
   const router = useRouter();
@@ -42,6 +48,7 @@ export default function QuizScreen() {
       setShowResult(true);
       setIsCorrect(false);
       showFeedback();
+      playTimeUpFeedback();
     }
   }, [selectedIndex, currentQuestion, answer, timeLimit]);
 
@@ -89,6 +96,9 @@ export default function QuizScreen() {
   const saveAndNavigate = async () => {
     const result = getResult();
 
+    // クイズ完了のフィードバック
+    playCompleteFeedback();
+
     // 統計を保存
     const statsToUpdate = result.answeredQuestions.map((q) => ({
       questionId: q.question.id,
@@ -122,6 +132,13 @@ export default function QuizScreen() {
     setIsCorrect(correct);
     setShowResult(true);
     showFeedback();
+
+    // 触覚フィードバック
+    if (correct) {
+      playCorrectFeedback();
+    } else {
+      playIncorrectFeedback();
+    }
   };
 
   const handleNext = () => {

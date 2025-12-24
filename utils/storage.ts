@@ -5,6 +5,22 @@ import { supabase } from './supabase';
 
 const USER_DATA_KEY = '@gakuho_quiz_user_data';
 const CUSTOM_QUESTIONS_KEY = '@gakuho_quiz_custom_questions';
+const DEVICE_ID_KEY = '@gakuho_quiz_device_id';
+
+// デバイスIDを取得または生成
+export const getDeviceId = async (): Promise<string> => {
+  try {
+    let deviceId = await AsyncStorage.getItem(DEVICE_ID_KEY);
+    if (!deviceId) {
+      deviceId = `device-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+      await AsyncStorage.setItem(DEVICE_ID_KEY, deviceId);
+    }
+    return deviceId;
+  } catch (error) {
+    console.error('Error getting device ID:', error);
+    return `temp-${Date.now()}`;
+  }
+};
 
 const defaultUserData: UserData = {
   highScores: {},
@@ -34,7 +50,7 @@ export const saveUserData = async (data: UserData): Promise<void> => {
   }
 };
 
-// ハイスコアを更新
+// ハイスコアを更新 (クラウド同期付き)
 export const updateHighScore = async (
   key: string,
   score: number
@@ -45,12 +61,15 @@ export const updateHighScore = async (
   if (score > currentHigh) {
     userData.highScores[key] = score;
     await saveUserData(userData);
+
+    // クラウドに保存 (バックグラウンド)
+    saveHighScoreToCloud(key, score).catch(() => {});
     return true;
   }
   return false;
 };
 
-// 問題の統計を更新
+// 問題の統計を更新 (クラウド同期付き)
 export const updateQuestionStats = async (
   questionId: string,
   isCorrect: boolean
@@ -65,9 +84,12 @@ export const updateQuestionStats = async (
 
   userData.questionStats[questionId] = stats;
   await saveUserData(userData);
+
+  // クラウドに同期 (バックグラウンド)
+  syncStatsToCloud(questionId, stats).catch(() => {});
 };
 
-// 複数問題の統計を一括更新
+// 複数問題の統計を一括更新 (クラウド同期付き)
 export const updateMultipleQuestionStats = async (
   results: { questionId: string; isCorrect: boolean }[]
 ): Promise<void> => {
@@ -83,6 +105,9 @@ export const updateMultipleQuestionStats = async (
       stats.correct += 1;
     }
     userData.questionStats[result.questionId] = stats;
+
+    // クラウドに同期 (バックグラウンド)
+    syncStatsToCloud(result.questionId, stats).catch(() => {});
   }
 
   await saveUserData(userData);
@@ -111,9 +136,8 @@ export const resetUserData = async (): Promise<void> => {
 export const fetchQuestionsFromSupabase = async (): Promise<Question[]> => {
   try {
     const { data, error } = await supabase
-      .from('quiz_questions')
-      .select('*')
-      .eq('is_active', true);
+      .from('questions')
+      .select('*');
 
     if (error) {
       console.error('Supabase error:', error);
@@ -131,6 +155,115 @@ export const fetchQuestionsFromSupabase = async (): Promise<Question[]> => {
     }));
   } catch (error) {
     console.error('Error fetching from Supabase:', error);
+    return [];
+  }
+};
+
+// === クラウド同期機能 ===
+
+// 成績をSupabaseに同期
+export const syncStatsToCloud = async (
+  questionId: string,
+  stats: QuestionStats
+): Promise<void> => {
+  try {
+    const deviceId = await getDeviceId();
+    const { error } = await supabase
+      .from('user_stats')
+      .upsert({
+        device_id: deviceId,
+        question_id: questionId,
+        attempts: stats.attempts,
+        correct: stats.correct,
+        updated_at: new Date().toISOString(),
+      }, {
+        onConflict: 'device_id,question_id',
+      });
+
+    if (error) {
+      console.error('Error syncing stats to cloud:', error);
+    }
+  } catch (error) {
+    console.error('Error syncing stats:', error);
+  }
+};
+
+// クラウドから成績を取得
+export const fetchStatsFromCloud = async (): Promise<Record<string, QuestionStats>> => {
+  try {
+    const deviceId = await getDeviceId();
+    const { data, error } = await supabase
+      .from('user_stats')
+      .select('*')
+      .eq('device_id', deviceId);
+
+    if (error) {
+      console.error('Error fetching stats from cloud:', error);
+      return {};
+    }
+
+    const stats: Record<string, QuestionStats> = {};
+    data.forEach((row: any) => {
+      stats[row.question_id] = {
+        attempts: row.attempts,
+        correct: row.correct,
+      };
+    });
+    return stats;
+  } catch (error) {
+    console.error('Error fetching stats:', error);
+    return {};
+  }
+};
+
+// ハイスコアをSupabaseに保存
+export const saveHighScoreToCloud = async (
+  mode: string,
+  score: number
+): Promise<void> => {
+  try {
+    const deviceId = await getDeviceId();
+    const { error } = await supabase
+      .from('high_scores')
+      .insert({
+        device_id: deviceId,
+        mode: mode,
+        score: score,
+      });
+
+    if (error) {
+      console.error('Error saving high score to cloud:', error);
+    }
+  } catch (error) {
+    console.error('Error saving high score:', error);
+  }
+};
+
+// ハイスコアランキングを取得
+export const fetchHighScoreRanking = async (
+  mode: string,
+  limit: number = 10
+): Promise<{ deviceId: string; score: number; createdAt: string }[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('high_scores')
+      .select('*')
+      .eq('mode', mode)
+      .order('score', { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      console.error('Error fetching ranking:', error);
+      return [];
+    }
+
+    return data.map((row: any) => ({
+      deviceId: row.device_id,
+      score: row.score,
+      createdAt: row.created_at,
+    }));
+  } catch (error) {
+    console.error('Error fetching ranking:', error);
     return [];
   }
 };
