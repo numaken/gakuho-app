@@ -55,3 +55,12 @@ export {
 // ランキング
 export { fetchRanking, getMyRank } from './ranking';
 export type { RankingEntry } from './ranking';
+
+// 分析
+export {
+  analyzeBySubject,
+  getRecommendedQuestions,
+  getWeakQuestionsForSubject,
+  getQuizHistory,
+} from './analysis';
+export type { SubjectAnalysis, WeakPointAnalysis } from './analysis';
