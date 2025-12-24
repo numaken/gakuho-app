@@ -1,11 +1,39 @@
-import React from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, Image, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '../components/Button';
+import { getUserProfile } from '../utils/storage';
+import { UserProfile } from '../types';
 
 export default function HomeScreen() {
   const router = useRouter();
+  const [isLoading, setIsLoading] = useState(true);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+
+  useEffect(() => {
+    checkProfile();
+  }, []);
+
+  const checkProfile = async () => {
+    const userProfile = await getUserProfile();
+    if (!userProfile) {
+      router.replace('/nickname');
+      return;
+    }
+    setProfile(userProfile);
+    setIsLoading(false);
+  };
+
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#4A90D9" />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -48,13 +76,22 @@ export default function HomeScreen() {
           size="large"
           style={styles.startButton}
         />
-        <Button
-          title="記録チェック"
-          onPress={() => router.push('/result?mode=history')}
-          variant="secondary"
-          size="large"
-          style={styles.recordButton}
-        />
+        <View style={styles.subButtonRow}>
+          <Button
+            title="ランキング"
+            onPress={() => router.push('/ranking')}
+            variant="secondary"
+            size="medium"
+            style={styles.subButton}
+          />
+          <Button
+            title="マイページ"
+            onPress={() => router.push('/mypage')}
+            variant="secondary"
+            size="medium"
+            style={styles.subButton}
+          />
+        </View>
       </View>
 
       <View style={styles.footer}>
@@ -68,6 +105,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F5F9FF',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   header: {
     flexDirection: 'row',
@@ -138,8 +180,12 @@ const styles = StyleSheet.create({
   startButton: {
     width: '100%',
   },
-  recordButton: {
-    width: '100%',
+  subButtonRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  subButton: {
+    flex: 1,
   },
   footer: {
     alignItems: 'center',

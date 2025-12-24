@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { UserData, QuestionStats, Question, AnsweredQuestion } from '../types';
+import { UserData, QuestionStats, Question, AnsweredQuestion, UserProfile } from '../types';
 import { questions as defaultQuestions } from '../data/questions';
 import { supabase } from './supabase';
 
@@ -7,6 +7,7 @@ const USER_DATA_KEY = '@gakuho_quiz_user_data';
 const CUSTOM_QUESTIONS_KEY = '@gakuho_quiz_custom_questions';
 const DEVICE_ID_KEY = '@gakuho_quiz_device_id';
 const LAST_QUIZ_RESULT_KEY = '@gakuho_quiz_last_result';
+const USER_PROFILE_KEY = '@gakuho_quiz_user_profile';
 
 // デバイスIDを取得または生成
 export const getDeviceId = async (): Promise<string> => {
@@ -393,5 +394,210 @@ export const clearLastQuizResult = async (): Promise<void> => {
     await AsyncStorage.removeItem(LAST_QUIZ_RESULT_KEY);
   } catch (error) {
     console.error('Error clearing last quiz result:', error);
+  }
+};
+
+// === ユーザープロファイル管理 ===
+
+// 招待コードを生成
+const generateInviteCode = (): string => {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return code;
+};
+
+// ニックネームのバリデーション
+export const validateNickname = (nickname: string): { valid: boolean; error?: string } => {
+  const trimmed = nickname.trim();
+
+  if (trimmed.length === 0) {
+    return { valid: false, error: 'ニックネームを入力してね' };
+  }
+
+  if (trimmed.length < 2) {
+    return { valid: false, error: '2文字以上で入力してね' };
+  }
+
+  if (trimmed.length > 12) {
+    return { valid: false, error: '12文字以内で入力してね' };
+  }
+
+  // 不適切な表現のフィルタリング (簡易版)
+  const ngWords = ['admin', 'test', 'null', 'undefined'];
+  if (ngWords.some(ng => trimmed.toLowerCase().includes(ng))) {
+    return { valid: false, error: 'この名前は使えないよ' };
+  }
+
+  return { valid: true };
+};
+
+// ユーザープロファイルを取得
+export const getUserProfile = async (): Promise<UserProfile | null> => {
+  try {
+    const data = await AsyncStorage.getItem(USER_PROFILE_KEY);
+    if (data) {
+      return JSON.parse(data);
+    }
+    return null;
+  } catch (error) {
+    console.error('Error loading user profile:', error);
+    return null;
+  }
+};
+
+// ユーザープロファイルを保存
+export const saveUserProfile = async (nickname: string): Promise<UserProfile> => {
+  try {
+    const deviceId = await getDeviceId();
+    const profile: UserProfile = {
+      nickname: nickname.trim(),
+      deviceId,
+      inviteCode: generateInviteCode(),
+      createdAt: Date.now(),
+    };
+    await AsyncStorage.setItem(USER_PROFILE_KEY, JSON.stringify(profile));
+
+    // クラウドにも同期
+    await syncProfileToCloud(profile);
+
+    return profile;
+  } catch (error) {
+    console.error('Error saving user profile:', error);
+    throw error;
+  }
+};
+
+// ニックネームを更新
+export const updateNickname = async (nickname: string): Promise<UserProfile | null> => {
+  try {
+    const profile = await getUserProfile();
+    if (!profile) return null;
+
+    profile.nickname = nickname.trim();
+    await AsyncStorage.setItem(USER_PROFILE_KEY, JSON.stringify(profile));
+
+    // クラウドにも同期
+    await syncProfileToCloud(profile);
+
+    return profile;
+  } catch (error) {
+    console.error('Error updating nickname:', error);
+    return null;
+  }
+};
+
+// プロファイルをクラウドに同期
+const syncProfileToCloud = async (profile: UserProfile): Promise<void> => {
+  try {
+    const { error } = await supabase
+      .from('user_profiles')
+      .upsert({
+        device_id: profile.deviceId,
+        nickname: profile.nickname,
+        invite_code: profile.inviteCode,
+        created_at: new Date(profile.createdAt).toISOString(),
+        updated_at: new Date().toISOString(),
+      }, {
+        onConflict: 'device_id',
+      });
+
+    if (error) {
+      console.error('Error syncing profile to cloud:', error);
+    }
+  } catch (error) {
+    console.error('Error syncing profile:', error);
+  }
+};
+
+// === ランキング機能 ===
+
+export interface RankingEntry {
+  rank: number;
+  nickname: string;
+  score: number;
+  deviceId: string;
+  isMe: boolean;
+}
+
+// ランキングを取得
+export const fetchRanking = async (
+  period: 'weekly' | 'monthly' | 'all' = 'all',
+  limit: number = 50
+): Promise<RankingEntry[]> => {
+  try {
+    const myDeviceId = await getDeviceId();
+    let query = supabase
+      .from('high_scores')
+      .select(`
+        device_id,
+        score,
+        created_at,
+        user_profiles!inner(nickname)
+      `)
+      .order('score', { ascending: false })
+      .limit(limit);
+
+    // 期間フィルター
+    if (period === 'weekly') {
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 7);
+      query = query.gte('created_at', weekAgo.toISOString());
+    } else if (period === 'monthly') {
+      const monthAgo = new Date();
+      monthAgo.setMonth(monthAgo.getMonth() - 1);
+      query = query.gte('created_at', monthAgo.toISOString());
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      console.error('Error fetching ranking:', error);
+      return [];
+    }
+
+    // デバイスごとに最高スコアのみを抽出
+    const bestScores = new Map<string, { score: number; nickname: string }>();
+    data.forEach((row: any) => {
+      const deviceId = row.device_id;
+      const score = row.score;
+      const nickname = row.user_profiles?.nickname || '名無し';
+
+      if (!bestScores.has(deviceId) || bestScores.get(deviceId)!.score < score) {
+        bestScores.set(deviceId, { score, nickname });
+      }
+    });
+
+    // ランキング配列に変換
+    const ranking: RankingEntry[] = Array.from(bestScores.entries())
+      .sort((a, b) => b[1].score - a[1].score)
+      .slice(0, limit)
+      .map(([deviceId, { score, nickname }], index) => ({
+        rank: index + 1,
+        nickname,
+        score,
+        deviceId,
+        isMe: deviceId === myDeviceId,
+      }));
+
+    return ranking;
+  } catch (error) {
+    console.error('Error fetching ranking:', error);
+    return [];
+  }
+};
+
+// 自分のランキング順位を取得
+export const getMyRank = async (): Promise<number | null> => {
+  try {
+    const myDeviceId = await getDeviceId();
+    const ranking = await fetchRanking('all', 1000);
+    const myEntry = ranking.find(entry => entry.deviceId === myDeviceId);
+    return myEntry?.rank || null;
+  } catch (error) {
+    console.error('Error getting my rank:', error);
+    return null;
   }
 };

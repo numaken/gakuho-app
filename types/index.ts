@@ -26,6 +26,14 @@ export interface QuestionStats {
   correct: number;
 }
 
+// ユーザープロファイル
+export interface UserProfile {
+  nickname: string;
+  deviceId: string;
+  inviteCode: string;
+  createdAt: number;
+}
+
 // ユーザーデータ構造
 export interface UserData {
   highScores: Record<string, number>;

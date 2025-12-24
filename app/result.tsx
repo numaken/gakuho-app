@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,20 +8,25 @@ import {
   TouchableOpacity,
   Linking,
   Image,
+  Modal,
+  Alert,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '../components/Button';
+import { ShareCard } from '../components/ShareCard';
 import {
   getHighScores,
   getQuestionStats,
   getLastQuizResult,
   clearLastQuizResult,
+  getUserProfile,
 } from '../utils/storage';
 import { getWeakQuestionIds } from '../utils/scoring';
-import { SUBJECT_NAMES, Subject, AnsweredQuestion } from '../types';
+import { SUBJECT_NAMES, Subject, AnsweredQuestion, UserProfile } from '../types';
 import { getDiagnosis, getWeakSubjects } from '../utils/openai';
 import { getRecommendedMaterials, Material } from '../data/materials';
+import { captureAndShare } from '../utils/share';
 
 interface DiagnosisResult {
   comment: string;
@@ -46,6 +51,10 @@ export default function ResultScreen() {
   const [diagnosis, setDiagnosis] = useState<DiagnosisResult | null>(null);
   const [isLoadingDiagnosis, setIsLoadingDiagnosis] = useState(false);
   const [recommendedMaterials, setRecommendedMaterials] = useState<Material[]>([]);
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const shareCardRef = useRef<View>(null);
 
   useEffect(() => {
     loadData();
@@ -61,6 +70,9 @@ export default function ResultScreen() {
     const stats = await getQuestionStats();
     const weakIds = getWeakQuestionIds(stats);
     setWeakQuestionCount(weakIds.length);
+
+    const userProfile = await getUserProfile();
+    setProfile(userProfile);
   };
 
   const loadDiagnosis = async () => {
@@ -121,6 +133,31 @@ export default function ResultScreen() {
 
   const handleMaterialPress = (url: string) => {
     Linking.openURL(url);
+  };
+
+  const handleShare = () => {
+    setShowShareModal(true);
+  };
+
+  const handleShareCapture = async () => {
+    setIsSharing(true);
+    try {
+      const success = await captureAndShare(shareCardRef, {
+        score,
+        correctCount: correct,
+        totalQuestions: total,
+      });
+      if (success) {
+        setShowShareModal(false);
+      } else {
+        Alert.alert('エラー', 'シェアできませんでした');
+      }
+    } catch (error) {
+      console.error('Share error:', error);
+      Alert.alert('エラー', 'シェアに失敗しました');
+    } finally {
+      setIsSharing(false);
+    }
   };
 
   if (isHistory) {
@@ -281,21 +318,74 @@ export default function ResultScreen() {
 
         <View style={styles.buttonContainer}>
           <Button
-            title="もう一度"
-            onPress={handleRetry}
+            title="結果をシェア"
+            onPress={handleShare}
             variant="primary"
             size="large"
             style={styles.button}
           />
-          <Button
-            title="トップへ"
-            onPress={handleHome}
-            variant="secondary"
-            size="large"
-            style={styles.button}
-          />
+          <View style={styles.buttonRow}>
+            <Button
+              title="もう一度"
+              onPress={handleRetry}
+              variant="secondary"
+              size="medium"
+              style={styles.halfButton}
+            />
+            <Button
+              title="トップへ"
+              onPress={handleHome}
+              variant="secondary"
+              size="medium"
+              style={styles.halfButton}
+            />
+          </View>
         </View>
       </ScrollView>
+
+      {/* シェアモーダル */}
+      <Modal
+        visible={showShareModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowShareModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>結果をシェアしよう!</Text>
+
+            <View style={styles.shareCardContainer}>
+              <ShareCard
+                ref={shareCardRef}
+                nickname={profile?.nickname || 'ゲスト'}
+                score={score}
+                correctCount={correct}
+                totalQuestions={total}
+                mode={params.mode as string}
+              />
+            </View>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.shareButton}
+                onPress={handleShareCapture}
+                disabled={isSharing}
+              >
+                <Text style={styles.shareButtonText}>
+                  {isSharing ? 'シェア中...' : 'シェアする'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.cancelModalButton}
+                onPress={() => setShowShareModal(false)}
+                disabled={isSharing}
+              >
+                <Text style={styles.cancelModalButtonText}>キャンセル</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -473,6 +563,13 @@ const styles = StyleSheet.create({
   button: {
     width: '100%',
   },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  halfButton: {
+    flex: 1,
+  },
   // 診断セクション
   diagnosisSection: {
     marginTop: 24,
@@ -581,5 +678,52 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#999999',
     marginTop: 4,
+  },
+  // シェアモーダル
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 24,
+    alignItems: 'center',
+    maxWidth: 360,
+    width: '90%',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333333',
+    marginBottom: 20,
+  },
+  shareCardContainer: {
+    marginBottom: 20,
+  },
+  modalButtons: {
+    width: '100%',
+    gap: 12,
+  },
+  shareButton: {
+    backgroundColor: '#4A90D9',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  shareButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  cancelModalButton: {
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  cancelModalButtonText: {
+    fontSize: 14,
+    color: '#666666',
   },
 });
