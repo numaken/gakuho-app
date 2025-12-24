@@ -11,7 +11,7 @@ interface ShareOptions {
 
 // シェアカードをキャプチャして共有
 export const captureAndShare = async (
-  cardRef: RefObject<View>,
+  cardRef: RefObject<View | null>,
   options: ShareOptions
 ): Promise<boolean> => {
   try {
