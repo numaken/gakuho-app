@@ -1,8 +1,24 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Question } from '../../types';
+import { Question, Subject } from '../../types';
 import { questions as defaultQuestions } from '../../data/questions';
 import { supabase } from '../supabase';
 import { STORAGE_KEYS } from './constants';
+
+// Supabaseの教科名をアプリの教科コードに変換
+const SUBJECT_MAP: Record<string, Subject> = {
+  // 日本語名からの変換
+  '国語': 'japanese',
+  '社会': 'social',
+  '数学': 'math',
+  '理科': 'science',
+  '英語': 'english',
+  // 英語名からの変換（念のため）
+  'japanese': 'japanese',
+  'social': 'social',
+  'math': 'math',
+  'science': 'science',
+  'english': 'english',
+};
 
 // Supabaseから問題を取得
 export const fetchQuestionsFromSupabase = async (): Promise<Question[]> => {
@@ -16,14 +32,18 @@ export const fetchQuestionsFromSupabase = async (): Promise<Question[]> => {
       return [];
     }
 
-    return data.map((q: any) => ({
-      id: q.id,
-      subject: q.subject,
-      question: q.question,
-      choices: q.choices,
-      correctIndex: q.correct_index,
-      difficulty: q.difficulty,
-    }));
+    console.log('Supabase raw subjects:', [...new Set(data.map((q: any) => q.subject))]);
+
+    return data
+      .filter((q: any) => SUBJECT_MAP[q.subject]) // マッピングできるもののみ
+      .map((q: any) => ({
+        id: q.id,
+        subject: SUBJECT_MAP[q.subject],
+        question: q.question,
+        choices: q.choices,
+        correctIndex: q.correct_index,
+        difficulty: q.difficulty,
+      }));
   } catch (error) {
     console.error('Error fetching from Supabase:', error);
     return [];
@@ -46,13 +66,45 @@ export const getCustomQuestions = async (): Promise<Question[]> => {
 
 // 全問題を取得（Supabase優先、フォールバックでローカル）
 export const getAllQuestions = async (): Promise<Question[]> => {
-  const supabaseQuestions = await fetchQuestionsFromSupabase();
+  console.log('getAllQuestions: starting, defaultQuestions count:', defaultQuestions.length);
 
-  if (supabaseQuestions.length > 0) {
-    return supabaseQuestions;
+  // まずローカル問題があることを確認
+  if (!defaultQuestions || defaultQuestions.length === 0) {
+    console.error('getAllQuestions: No default questions available!');
+    return [];
   }
 
-  console.log('Using local fallback questions');
+  try {
+    // タイムアウト付きでSupabaseから取得（3秒）
+    const timeoutPromise = new Promise<Question[]>((resolve) => {
+      setTimeout(() => {
+        console.log('getAllQuestions: Supabase timeout, using local');
+        resolve([]);
+      }, 3000);
+    });
+
+    const supabaseQuestions = await Promise.race([
+      fetchQuestionsFromSupabase(),
+      timeoutPromise,
+    ]);
+
+    if (supabaseQuestions.length > 0) {
+      console.log('getAllQuestions: Using Supabase questions:', supabaseQuestions.length);
+      console.log('getAllQuestions: Supabase subjects:', [...new Set(supabaseQuestions.map(q => q.subject))]);
+      // ローカル問題も追加して返す（Supabaseにない教科もカバー）
+      const allQuestions = [...supabaseQuestions, ...defaultQuestions];
+      // 重複IDを除去
+      const uniqueQuestions = allQuestions.filter((q, index, self) =>
+        index === self.findIndex(t => t.id === q.id)
+      );
+      console.log('getAllQuestions: Total unique questions:', uniqueQuestions.length);
+      return uniqueQuestions;
+    }
+  } catch (error) {
+    console.error('getAllQuestions: Error fetching from Supabase:', error);
+  }
+
+  console.log('getAllQuestions: Using local fallback, count:', defaultQuestions.length);
   const customQuestions = await getCustomQuestions();
   return [...defaultQuestions, ...customQuestions];
 };

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, Image, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '../components/Button';
@@ -38,20 +38,12 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <Image
-            source={require('../assets/logo.png')}
-            style={styles.logo}
-            resizeMode="contain"
-          />
-          <Text style={styles.logoText}>学宝社</Text>
-        </View>
-        <TouchableOpacity
-          style={styles.adminButton}
-          onPress={() => router.push('/admin')}
-        >
-          <Text style={styles.adminButtonText}>管理</Text>
-        </TouchableOpacity>
+        <Image
+          source={require('../assets/logo.png')}
+          style={styles.logo}
+          resizeMode="contain"
+        />
+        <Text style={styles.logoText}>学宝社</Text>
       </View>
 
       <View style={styles.titleContainer}>
@@ -114,13 +106,8 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingTop: 10,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
   },
   logo: {
     width: 40,
@@ -131,16 +118,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#4A90D9',
     marginLeft: 8,
-  },
-  adminButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: '#F0F0F0',
-  },
-  adminButtonText: {
-    fontSize: 14,
-    color: '#666666',
   },
   titleContainer: {
     alignItems: 'center',

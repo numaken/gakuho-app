@@ -10,7 +10,6 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '../components/Button';
 import { DiagnosisCard } from '../components/DiagnosisCard';
-import { MaterialList } from '../components/MaterialList';
 import { ShareModal } from '../components/ShareModal';
 import {
   getHighScores,
@@ -21,8 +20,7 @@ import {
 } from '../utils/storage';
 import { getWeakQuestionIds } from '../utils/scoring';
 import { SUBJECT_NAMES, Subject, UserProfile } from '../types';
-import { getDiagnosis, getWeakSubjects } from '../utils/openai';
-import { getRecommendedMaterials, Material } from '../data/materials';
+import { getDiagnosis } from '../utils/openai';
 
 interface DiagnosisResult {
   comment: string;
@@ -46,9 +44,9 @@ export default function ResultScreen() {
   const [weakQuestionCount, setWeakQuestionCount] = useState(0);
   const [diagnosis, setDiagnosis] = useState<DiagnosisResult | null>(null);
   const [isLoadingDiagnosis, setIsLoadingDiagnosis] = useState(false);
-  const [recommendedMaterials, setRecommendedMaterials] = useState<Material[]>([]);
   const [showShareModal, setShowShareModal] = useState(false);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [wrongSubjects, setWrongSubjects] = useState<Subject[]>([]);
 
   useEffect(() => {
     loadData();
@@ -80,9 +78,13 @@ export default function ResultScreen() {
         );
         setDiagnosis(diagnosisResult);
 
-        const weakSubjects = getWeakSubjects(lastResult.answeredQuestions);
-        const materials = getRecommendedMaterials(weakSubjects, 3);
-        setRecommendedMaterials(materials);
+        // 間違えた問題の教科を抽出（補習クイズ用）
+        const wrongAnswers = lastResult.answeredQuestions.filter(q => !q.isCorrect);
+        const wrongSubjectSet = new Set<Subject>();
+        wrongAnswers.forEach(q => {
+          wrongSubjectSet.add(q.question.subject);
+        });
+        setWrongSubjects(Array.from(wrongSubjectSet));
 
         await clearLastQuizResult();
       }
@@ -120,6 +122,17 @@ export default function ResultScreen() {
 
   const handleHome = () => {
     router.replace('/');
+  };
+
+  const handleRemedialQuiz = () => {
+    if (wrongSubjects.length > 0) {
+      const remedialParams = new URLSearchParams({
+        mode: 'weak',
+        subjects: wrongSubjects.join(','),
+        timeLimit: timeLimit.toString(),
+      });
+      router.replace(`/quiz?${remedialParams.toString()}`);
+    }
   };
 
   // 履歴表示モード
@@ -218,19 +231,20 @@ export default function ResultScreen() {
           />
         </View>
 
-        {/* 副教材レコメンドセクション */}
-        {recommendedMaterials.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>おすすめの教材</Text>
-            <MaterialList materials={recommendedMaterials} />
-          </View>
-        )}
-
         <View style={styles.buttonContainer}>
+          {wrongSubjects.length > 0 && (
+            <Button
+              title="苦手分野をもう一度挑戦!"
+              onPress={handleRemedialQuiz}
+              variant="primary"
+              size="large"
+              style={styles.remedialButton}
+            />
+          )}
           <Button
             title="結果をシェア"
             onPress={() => setShowShareModal(true)}
-            variant="primary"
+            variant={wrongSubjects.length > 0 ? 'secondary' : 'primary'}
             size="large"
             style={styles.button}
           />
@@ -437,6 +451,10 @@ const styles = StyleSheet.create({
   },
   button: {
     width: '100%',
+  },
+  remedialButton: {
+    width: '100%',
+    backgroundColor: '#FF6B35',
   },
   buttonRow: {
     flexDirection: 'row',

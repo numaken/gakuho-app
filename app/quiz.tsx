@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, Animated } from 'react-native';
+import { View, Text, StyleSheet, Animated, TouchableOpacity, Alert, Modal } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Timer } from '../components/Timer';
@@ -29,6 +29,7 @@ export default function QuizScreen() {
   const [showResult, setShowResult] = useState(false);
   const [feedbackOpacity] = useState(new Animated.Value(0));
   const [isCorrect, setIsCorrect] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
 
   const {
     currentQuestion,
@@ -52,20 +53,55 @@ export default function QuizScreen() {
     }
   }, [selectedIndex, currentQuestion, answer, timeLimit]);
 
-  const { timeLeft, start, reset: resetTimer, getElapsed } = useTimer({
+  const { timeLeft, isRunning, start, pause, reset: resetTimer, getElapsed } = useTimer({
     initialTime: timeLimit,
     onTimeUp: handleTimeUp,
   });
 
+  const handleQuit = () => {
+    pause();
+    Alert.alert(
+      'クイズを終了',
+      '本当にやめますか？\n途中経過は保存されません。',
+      [
+        {
+          text: 'キャンセル',
+          style: 'cancel',
+          onPress: () => {
+            if (!showResult) start();
+          },
+        },
+        {
+          text: 'やめる',
+          style: 'destructive',
+          onPress: () => router.replace('/'),
+        },
+      ]
+    );
+  };
+
+  const handlePause = () => {
+    pause();
+    setIsPaused(true);
+  };
+
+  const handleResume = () => {
+    setIsPaused(false);
+    if (!showResult) start();
+  };
+
   useEffect(() => {
-    if (subjects && subjects.length > 0) {
-      initQuiz({
-        mode,
-        subjects,
-        timeLimit,
-        questionCount: 10,
-      });
-    }
+    const startQuiz = async () => {
+      if (subjects && subjects.length > 0) {
+        await initQuiz({
+          mode,
+          subjects,
+          timeLimit,
+          questionCount: 10,
+        });
+      }
+    };
+    startQuiz();
   }, []);
 
   useEffect(() => {
@@ -161,11 +197,37 @@ export default function QuizScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.progressText}>
-          {currentIndex + 1} / {questions.length}
-        </Text>
+        <View style={styles.headerTop}>
+          <TouchableOpacity onPress={handleQuit} style={styles.closeButton}>
+            <Text style={styles.closeButtonText}>✕</Text>
+          </TouchableOpacity>
+          <Text style={styles.progressText}>
+            {currentIndex + 1} / {questions.length}
+          </Text>
+          <TouchableOpacity onPress={handlePause} style={styles.pauseButton} disabled={showResult}>
+            <Text style={styles.pauseButtonText}>⏸</Text>
+          </TouchableOpacity>
+        </View>
         <Timer timeLeft={timeLeft} totalTime={timeLimit} />
       </View>
+
+      <Modal visible={isPaused} transparent animationType="fade">
+        <View style={styles.pauseOverlay}>
+          <View style={styles.pauseModal}>
+            <Text style={styles.pauseTitle}>一時停止中</Text>
+            <Text style={styles.pauseMessage}>問題は隠されています</Text>
+            <Button
+              title="再開する"
+              onPress={handleResume}
+              variant="primary"
+              size="large"
+            />
+            <TouchableOpacity onPress={handleQuit} style={styles.quitLink}>
+              <Text style={styles.quitLinkText}>クイズをやめる</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       <Animated.View
         style={[
@@ -223,12 +285,74 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 16,
   },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  closeButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F0F0F0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  closeButtonText: {
+    fontSize: 20,
+    color: '#666666',
+    fontWeight: 'bold',
+  },
+  pauseButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F0F0F0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pauseButtonText: {
+    fontSize: 18,
+    color: '#666666',
+  },
   progressText: {
     fontSize: 16,
     fontWeight: 'bold',
     color: '#666666',
     textAlign: 'center',
-    marginBottom: 12,
+  },
+  pauseOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pauseModal: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 30,
+    width: '80%',
+    alignItems: 'center',
+  },
+  pauseTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333333',
+    marginBottom: 10,
+  },
+  pauseMessage: {
+    fontSize: 16,
+    color: '#666666',
+    marginBottom: 30,
+  },
+  quitLink: {
+    marginTop: 20,
+    padding: 10,
+  },
+  quitLinkText: {
+    fontSize: 14,
+    color: '#F44336',
   },
   feedbackContainer: {
     position: 'absolute',

@@ -46,13 +46,18 @@ export const useQuizLogic = (): UseQuizLogicReturn => {
 
     const count = newSettings.questionCount || DEFAULT_QUESTION_COUNT;
 
+    console.log('initQuiz: starting with settings', newSettings);
+
     // 全問題を取得（デフォルト + カスタム）
     const allQuestions = await getAllQuestions();
+    console.log('initQuiz: loaded questions count', allQuestions.length);
 
     // 教科でフィルター
     const filtered = allQuestions.filter((q) =>
       newSettings.subjects.includes(q.subject)
     );
+    console.log('initQuiz: filtered questions count', filtered.length);
+    console.log('initQuiz: subjects in questions:', [...new Set(allQuestions.map(q => q.subject))]);
 
     let selectedQuestions: Question[];
 
