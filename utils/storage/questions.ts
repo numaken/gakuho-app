@@ -24,7 +24,7 @@ const SUBJECT_MAP: Record<string, Subject> = {
 export const fetchQuestionsFromSupabase = async (): Promise<Question[]> => {
   try {
     const { data, error } = await supabase
-      .from('questions')
+      .from('quiz_questions')
       .select('*');
 
     if (error) {

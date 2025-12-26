@@ -145,9 +145,9 @@ export default function QuizScreen() {
     }));
     await updateMultipleQuestionStats(statsToUpdate);
 
-    // ハイスコアを更新
+    // ハイスコアを更新（Edge Function経由で不正対策付き）
     const scoreKey = generateScoreKey(mode, subjects, timeLimit);
-    await updateHighScore(scoreKey, result.score);
+    await updateHighScore(scoreKey, result.score, result.correctCount, result.totalQuestions, timeLimit);
 
     // 結果画面へ遷移
     const resultParams = new URLSearchParams({

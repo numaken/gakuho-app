@@ -34,7 +34,10 @@ export const saveUserData = async (data: UserData): Promise<void> => {
 // ハイスコアを更新 (クラウド同期付き)
 export const updateHighScore = async (
   key: string,
-  score: number
+  score: number,
+  correctCount: number = 0,
+  totalQuestions: number = 10,
+  timeLimit: number = 30
 ): Promise<boolean> => {
   const userData = await getUserData();
   const currentHigh = userData.highScores[key] || 0;
@@ -42,7 +45,7 @@ export const updateHighScore = async (
   if (score > currentHigh) {
     userData.highScores[key] = score;
     await saveUserData(userData);
-    saveHighScoreToCloud(key, score).catch(() => {});
+    saveHighScoreToCloud(key, score, correctCount, totalQuestions, timeLimit).catch(() => {});
     return true;
   }
   return false;

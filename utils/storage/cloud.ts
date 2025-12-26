@@ -2,6 +2,10 @@ import { QuestionStats } from '../../types';
 import { supabase } from '../supabase';
 import { getDeviceId } from './device';
 
+// Supabase Edge FunctionのURL
+const SUPABASE_URL = 'https://sqbuuhgncdnfgoahzlcb.supabase.co';
+const SUBMIT_SCORE_URL = `${SUPABASE_URL}/functions/v1/submit_score`;
+
 // 成績をSupabaseに同期
 export const syncStatsToCloud = async (
   questionId: string,
@@ -57,26 +61,43 @@ export const fetchStatsFromCloud = async (): Promise<Record<string, QuestionStat
   }
 };
 
-// ハイスコアをSupabaseに保存
+// ハイスコアをEdge Function経由でSupabaseに保存（レート制限・妥当性チェック付き）
 export const saveHighScoreToCloud = async (
   mode: string,
-  score: number
-): Promise<void> => {
+  score: number,
+  correctCount: number = 0,
+  totalQuestions: number = 10,
+  timeLimit: number = 30
+): Promise<boolean> => {
   try {
     const deviceId = await getDeviceId();
-    const { error } = await supabase
-      .from('high_scores')
-      .insert({
-        device_id: deviceId,
-        mode: mode,
-        score: score,
-      });
 
-    if (error) {
-      console.error('Error saving high score to cloud:', error);
+    const response = await fetch(SUBMIT_SCORE_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        deviceId,
+        mode,
+        score,
+        correctCount,
+        totalQuestions,
+        timeLimit,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Error saving high score:', errorData);
+      return false;
     }
+
+    const result = await response.json();
+    return result.success === true;
   } catch (error) {
     console.error('Error saving high score:', error);
+    return false;
   }
 };
 

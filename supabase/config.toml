@@ -1,0 +1,11 @@
+# Supabase Edge Functions Configuration
+# プロジェクト: gakuho-quiz-app
+
+[project]
+id = "sqbuuhgncdnfgoahzlcb"
+
+[functions.ai_feedback]
+verify_jwt = false
+
+[functions.submit_score]
+verify_jwt = false
