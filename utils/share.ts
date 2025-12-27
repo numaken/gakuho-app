@@ -51,7 +51,7 @@ export const captureAndShare = async (
 export const shareText = async (options: ShareOptions): Promise<boolean> => {
   try {
     const rate = Math.round((options.correctCount / options.totalQuestions) * 100);
-    const message = `ドキドキ!クイズチャレンジで${options.score}点取ったよ! (${options.correctCount}/${options.totalQuestions}問正解 ${rate}%) #学宝社 #クイズチャレンジ`;
+    const message = `ドキドキ!がくまるチャレンジで${options.score}点取ったよ! (${options.correctCount}/${options.totalQuestions}問正解 ${rate}%) #学宝社 #がくまるチャレンジ`;
 
     const isAvailable = await Sharing.isAvailableAsync();
     if (!isAvailable) {
@@ -82,5 +82,5 @@ export const generateInviteLink = (inviteCode: string): string => {
 // 招待メッセージを生成
 export const generateInviteMessage = (inviteCode: string, nickname: string): string => {
   const link = generateInviteLink(inviteCode);
-  return `${nickname}さんから招待されました!\n\n「ドキドキ!クイズチャレンジ」で一緒に学ぼう!\n\n招待コード: ${inviteCode}\n${link}\n\n#学宝社 #クイズチャレンジ`;
+  return `${nickname}さんから招待されました!\n\n「ドキドキ!がくまるチャレンジ」で一緒に学ぼう!\n\n招待コード: ${inviteCode}\n${link}\n\n#学宝社 #がくまるチャレンジ`;
 };

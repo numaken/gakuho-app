@@ -34,7 +34,7 @@ export const ShareCard = forwardRef<View, ShareCardProps>(
     return (
       <View ref={ref} style={styles.container} collapsable={false}>
         <View style={styles.header}>
-          <Text style={styles.appName}>ドキドキ!クイズチャレンジ</Text>
+          <Text style={styles.appName}>ドキドキ!がくまるチャレンジ</Text>
           <Text style={styles.modeLabel}>{getModeLabel()}</Text>
         </View>
 

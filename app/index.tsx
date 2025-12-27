@@ -48,7 +48,7 @@ export default function HomeScreen() {
 
       <View style={styles.titleContainer}>
         <Text style={styles.titleSub}>ドキドキ!</Text>
-        <Text style={styles.titleMain}>クイズチャレンジ</Text>
+        <Text style={styles.titleMain}>がくまるチャレンジ</Text>
       </View>
 
       <View style={styles.mascotContainer}>
